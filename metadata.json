@@ -1,0 +1,6 @@
+{
+  "name": "KBlueBio",
+  "description": "케이블루바이오 공식 홈페이지 - 미토콘드리아에서 찾은 정밀의료의 해답, 정밀진단, 표적치료, 뉴트라슈티컬 기술 선도",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
