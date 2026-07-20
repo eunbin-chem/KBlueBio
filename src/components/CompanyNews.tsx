@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NewsPost } from '../types';
 import { Search, Eye, Calendar, X, Plus, Trash2, Paperclip, Upload } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface CompanyNewsProps {
   lang: 'ko' | 'en';
@@ -12,29 +13,48 @@ export default function CompanyNews({ lang }: CompanyNewsProps) {
   const [selectedPost, setSelectedPost] = useState<NewsPost | null>(null);
 
   // Persistence States
-  const [customNews, setCustomNews] = useState<NewsPost[]>(() => {
-    const saved = localStorage.getItem('kbluebio_custom_news');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  });
+    const [customNews, setCustomNews] = useState<NewsPost[]>([]);
+  const [deletedPostIds, setDeletedPostIds] = useState<number[]>([]);
 
-  const [deletedPostIds, setDeletedPostIds] = useState<number[]>(() => {
-    const saved = localStorage.getItem('kbluebio_deleted_news_ids');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
+  useEffect(() => {
+    const loadSupabaseData = async () => {
+      const { data: newsData, error: newsError } = await supabase
+        .from('company_news')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (newsError) {
+        console.error('Failed to load company news:', newsError);
+      } else {
+        setCustomNews(
+          (newsData || []).map((item) => ({
+            id: Number(item.id),
+            category: item.category,
+            title: item.title,
+            author: item.author,
+            date: item.date,
+            views: item.views,
+            content: item.content,
+            files: item.files || [],
+            isCustom: item.is_custom,
+          }))
+        );
       }
-    }
-    return [];
-  });
+
+      const { data: deletedData, error: deletedError } = await supabase
+        .from('deleted_news_ids')
+        .select('id');
+
+      if (deletedError) {
+        console.error('Failed to load deleted news ids:', deletedError);
+      } else {
+        setDeletedPostIds((deletedData || []).map((item) => Number(item.id)));
+      }
+    };
+
+    loadSupabaseData();
+  }, []);
+
 
   // Modal & Form States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -452,7 +472,7 @@ In particular, KBlueBio Co., Ltd., which develops diagnostic devices and therapi
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={(e) => {
+            <form onSubmit={async (e) => {
               e.preventDefault();
               if (!newPostTitle.trim() || !newPostContent.trim()) return;
               
@@ -476,9 +496,27 @@ In particular, KBlueBio Co., Ltd., which develops diagnostic devices and therapi
                 files: newPostFiles
               };
 
+                            const { error } = await supabase.from('company_news').insert({
+                id: newPost.id,
+                category: newPost.category,
+                title: newPost.title,
+                author: newPost.author,
+                date: newPost.date,
+                views: newPost.views,
+                content: newPost.content,
+                files: newPost.files || [],
+                is_custom: true,
+              });
+
+              if (error) {
+                console.error('Failed to save company news:', error);
+                alert('Supabase 저장 중 오류가 발생했습니다.');
+                return;
+              }
+
               const updatedCustom = [newPost, ...customNews];
               setCustomNews(updatedCustom);
-              localStorage.setItem('kbluebio_custom_news', JSON.stringify(updatedCustom));
+
               setIsCreateModalOpen(false);
             }} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -695,30 +733,50 @@ In particular, KBlueBio Co., Ltd., which develops diagnostic devices and therapi
               >
                 {lang === 'ko' ? '취소' : 'Cancel'}
               </button>
-              <button
-                onClick={() => {
+                           <button
+                onClick={async () => {
                   if (postToDelete === null) return;
+
                   if (deletePassword !== '2027') {
                     setDeletePasswordError(lang === 'ko' ? '비밀번호가 올바르지 않습니다.' : 'Incorrect password.');
                     return;
                   }
-                  
-                  // If it's a custom post, remove from customNews
+
                   const isCustom = customNews.some(p => p.id === postToDelete);
+
                   if (isCustom) {
+                    const { error } = await supabase
+                      .from('company_news')
+                      .delete()
+                      .eq('id', postToDelete);
+
+                    if (error) {
+                      console.error('Failed to delete custom company news:', error);
+                      alert('Supabase 삭제 중 오류가 발생했습니다.');
+                      return;
+                    }
+
                     const updatedCustom = customNews.filter(p => p.id !== postToDelete);
                     setCustomNews(updatedCustom);
-                    localStorage.setItem('kbluebio_custom_news', JSON.stringify(updatedCustom));
                   } else {
-                    // If it's a static post, add to deletedPostIds
+                    const { error } = await supabase
+                      .from('deleted_news_ids')
+                      .insert({ id: postToDelete });
+
+                    if (error) {
+                      console.error('Failed to save deleted news id:', error);
+                      alert('Supabase 삭제 기록 저장 중 오류가 발생했습니다.');
+                      return;
+                    }
+
                     const updatedDeleted = [...deletedPostIds, postToDelete];
                     setDeletedPostIds(updatedDeleted);
-                    localStorage.setItem('kbluebio_deleted_news_ids', JSON.stringify(updatedDeleted));
                   }
 
                   if (selectedPost?.id === postToDelete) {
                     setSelectedPost(null);
                   }
+
                   setPostToDelete(null);
                 }}
                 className="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition-colors cursor-pointer"

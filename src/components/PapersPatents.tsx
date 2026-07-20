@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabase';
 import { 
   FileText, 
   Award, 
@@ -552,29 +553,55 @@ export default function PapersPatents({ lang }: PapersPatentsProps) {
   const [selectedItem, setSelectedItem] = useState<IPItem | null>(null);
 
   // Persistence States
-  const [customIP, setCustomIP] = useState<IPItem[]>(() => {
-    const saved = localStorage.getItem('kbluebio_custom_ip');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  });
+   const [customIP, setCustomIP] = useState<IPItem[]>([]);
+  const [deletedIPIds, setDeletedIPIds] = useState<string[]>([]);
 
-  const [deletedIPIds, setDeletedIPIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('kbluebio_deleted_ip_ids');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
+  useEffect(() => {
+    const loadSupabaseData = async () => {
+      const { data: ipData, error: ipError } = await supabase
+        .from('papers_patents')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (ipError) {
+        console.error('Failed to load papers/patents:', ipError);
+      } else {
+        setCustomIP(
+          (ipData || []).map((item) => ({
+            id: item.id,
+            type: item.type,
+            titleKo: item.title_ko,
+            titleEn: item.title_en,
+            journalKo: item.journal_ko,
+            journalEn: item.journal_en,
+            authorsKo: item.authors_ko || '',
+            authorsEn: item.authors_en || '',
+            date: item.date,
+            statusKo: item.status_ko,
+            statusEn: item.status_en,
+            number: item.number || '',
+            summaryKo: item.summary_ko,
+            summaryEn: item.summary_en,
+            link: item.link || '',
+            tags: item.tags || [],
+            isCustom: item.is_custom,
+          }))
+        );
       }
-    }
-    return [];
-  });
+
+      const { data: deletedData, error: deletedError } = await supabase
+        .from('deleted_ip_ids')
+        .select('id');
+
+      if (deletedError) {
+        console.error('Failed to load deleted IP ids:', deletedError);
+      } else {
+        setDeletedIPIds((deletedData || []).map((item) => item.id));
+      }
+    };
+
+    loadSupabaseData();
+  }, []);
 
   // Form States for creation
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -1213,7 +1240,7 @@ export default function PapersPatents({ lang }: PapersPatentsProps) {
                   </button>
                 </div>
 
-                <form id="create-ip-form" className="space-y-4" onSubmit={(e) => {
+                <form id="create-ip-form" className="space-y-4" onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newTitleKo.trim() || !newTitleEn.trim() || !newSummaryKo.trim() || !newSummaryEn.trim()) return;
 
@@ -1246,9 +1273,34 @@ export default function PapersPatents({ lang }: PapersPatentsProps) {
                     tags: tags
                   };
 
+                                                    const { error } = await supabase.from('papers_patents').insert({
+                    id: newIPItem.id,
+                    type: newIPItem.type,
+                    title_ko: newIPItem.titleKo,
+                    title_en: newIPItem.titleEn,
+                    journal_ko: newIPItem.journalKo || '',
+                    journal_en: newIPItem.journalEn || '',
+                    authors_ko: newIPItem.authorsKo || '',
+                    authors_en: newIPItem.authorsEn || '',
+                    date: newIPItem.date,
+                    status_ko: newIPItem.statusKo,
+                    status_en: newIPItem.statusEn,
+                    number: newIPItem.number || '',
+                    summary_ko: newIPItem.summaryKo,
+                    summary_en: newIPItem.summaryEn,
+                    link: newIPItem.link || '',
+                    tags: newIPItem.tags || [],
+                    is_custom: true,
+                  });
+
+                  if (error) {
+                    console.error('Failed to save papers/patents:', error);
+                    alert('Supabase 저장 중 오류가 발생했습니다.');
+                    return;
+                  }
+
                   const updatedCustom = [newIPItem, ...customIP];
                   setCustomIP(updatedCustom);
-                  localStorage.setItem('kbluebio_custom_ip', JSON.stringify(updatedCustom));
                   
                   setIsCreateModalOpen(false);
                 }}>
@@ -1564,7 +1616,7 @@ export default function PapersPatents({ lang }: PapersPatentsProps) {
                   {lang === 'ko' ? '취소' : 'Cancel'}
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (itemToDelete === null) return;
                     if (deletePassword !== '2027') {
                       setDeletePasswordError(lang === 'ko' ? '비밀번호가 올바르지 않습니다.' : 'Incorrect password.');
@@ -1574,13 +1626,32 @@ export default function PapersPatents({ lang }: PapersPatentsProps) {
                     // Delete logic
                     const isCustom = customIP.some(item => item.id === itemToDelete);
                     if (isCustom) {
+                                           const { error } = await supabase
+                        .from('papers_patents')
+                        .delete()
+                        .eq('id', itemToDelete);
+
+                      if (error) {
+                        console.error('Failed to delete custom papers/patents:', error);
+                        alert('Supabase 삭제 중 오류가 발생했습니다.');
+                        return;
+                      }
+
                       const updatedCustom = customIP.filter(item => item.id !== itemToDelete);
                       setCustomIP(updatedCustom);
-                      localStorage.setItem('kbluebio_custom_ip', JSON.stringify(updatedCustom));
                     } else {
+                                            const { error } = await supabase
+                        .from('deleted_ip_ids')
+                        .insert({ id: itemToDelete });
+
+                      if (error) {
+                        console.error('Failed to save deleted IP id:', error);
+                        alert('Supabase 삭제 기록 저장 중 오류가 발생했습니다.');
+                        return;
+                      }
+
                       const updatedDeletedIds = [...deletedIPIds, itemToDelete];
                       setDeletedIPIds(updatedDeletedIds);
-                      localStorage.setItem('kbluebio_deleted_ip_ids', JSON.stringify(updatedDeletedIds));
                     }
                     
                     setItemToDelete(null);
