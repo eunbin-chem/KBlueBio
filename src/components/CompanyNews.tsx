@@ -8,7 +8,6 @@ interface CompanyNewsProps {
 }
 
 export default function CompanyNews({ lang }: CompanyNewsProps) {
-  console.log('HELLO_DEPLOY_TEST'); // <- 여기 추가
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'notice' | 'press' | 'disclosure' | 'ir'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState<NewsPost | null>(null);
