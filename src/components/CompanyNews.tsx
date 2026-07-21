@@ -257,7 +257,6 @@ In particular, KBlueBio Co., Ltd., which develops diagnostic devices and therapi
 const incrementViews = async (postId: string) => {
   console.log('incrementViews called:', postId);
 
-  // 1) 커스텀 글 여부 확인 로그
   const isCustom = customNews.some((p) => String(p.id) === String(postId));
   console.log('isCustom:', isCustom, 'customNews.length:', customNews.length);
 
@@ -266,7 +265,6 @@ const incrementViews = async (postId: string) => {
     return;
   }
 
-  // 2) 현재값 읽고 +1 (임시 안정 버전)
   const target = customNews.find((p) => String(p.id) === String(postId));
   const currentViews = Number(target?.views ?? 0);
   const nextViews = currentViews + 1;
@@ -284,15 +282,6 @@ const incrementViews = async (postId: string) => {
     console.error('조회수 업데이트 실패:', error);
     return;
   }
-
-  // 필요하면 로컬 상태도 반영
-  setCustomNews((prev) =>
-    prev.map((p) =>
-      String(p.id) === String(postId) ? { ...p, views: nextViews } : p
-    )
-  );
-};
-
 
   const appliedViews = Number(data?.views ?? nextViews);
 
@@ -853,4 +842,7 @@ onClick={async () => {
       )}
     </div>
   );
-}
+};
+
+
+
