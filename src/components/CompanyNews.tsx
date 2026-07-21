@@ -8,6 +8,7 @@ interface CompanyNewsProps {
 }
 
 export default function CompanyNews({ lang }: CompanyNewsProps) {
+  console.log('HELLO_DEPLOY_TEST'); // <- 여기 추가
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'notice' | 'press' | 'disclosure' | 'ir'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState<NewsPost | null>(null);
@@ -252,6 +253,66 @@ In particular, KBlueBio Co., Ltd., which develops diagnostic devices and therapi
     setPostToDelete(id);
   };
 
+
+const incrementViews = async (postId: string) => {
+  console.log('incrementViews called:', postId);
+
+  // 1) 커스텀 글 여부 확인 로그
+  const isCustom = customNews.some((p) => String(p.id) === String(postId));
+  console.log('isCustom:', isCustom, 'customNews.length:', customNews.length);
+
+  if (!isCustom) {
+    console.warn('skip increment (not custom):', postId);
+    return;
+  }
+
+  // 2) 현재값 읽고 +1 (임시 안정 버전)
+  const target = customNews.find((p) => String(p.id) === String(postId));
+  const currentViews = Number(target?.views ?? 0);
+  const nextViews = currentViews + 1;
+
+  const { data, error } = await supabase
+    .from('company_news')
+    .update({ views: nextViews })
+    .eq('id', String(postId))
+    .select('id, views')
+    .single();
+
+  console.log('update result:', { postId, currentViews, nextViews, data, error });
+
+  if (error) {
+    console.error('조회수 업데이트 실패:', error);
+    return;
+  }
+
+  // 필요하면 로컬 상태도 반영
+  setCustomNews((prev) =>
+    prev.map((p) =>
+      String(p.id) === String(postId) ? { ...p, views: nextViews } : p
+    )
+  );
+};
+
+
+  const appliedViews = Number(data?.views ?? nextViews);
+
+  // 화면 즉시 반영
+  setCustomNews((prev) =>
+    prev.map((p) =>
+      String(p.id) === String(postId) ? { ...p, views: appliedViews } : p
+    )
+  );
+
+  // 이미 열려있는 상세글 숫자도 즉시 반영
+  setSelectedPost((prev) =>
+    prev && String(prev.id) === String(postId)
+      ? { ...prev, views: appliedViews }
+      : prev
+  );
+};
+
+
+
   return (
     <div className="bg-slate-50 min-h-screen">
       {/* Visual Header */}
@@ -408,10 +469,13 @@ In particular, KBlueBio Co., Ltd., which develops diagnostic devices and therapi
                       filteredNews.map((post) => (
                         <tr 
                           key={post.id}
-                          onClick={() => {
-                            setSelectedPost(post);
-                            window.scrollTo({ top: 320, behavior: 'smooth' });
-                          }}
+onClick={async () => {
+  console.log('card clicked', post.id);
+  await incrementViews(String(post.id));   // 먼저 조회수
+  setSelectedPost(post);                    // 그 다음 열기
+  window.scrollTo({ top: 320, behavior: 'smooth' });
+}}
+
                           className={`hover:bg-slate-50/70 transition-colors cursor-pointer ${
                             selectedPost?.id === post.id ? 'bg-sky-50/30' : ''
                           }`}
